@@ -13,7 +13,9 @@ CollectionReference users = FirebaseFirestore.instance.collection("users");
 //product list for main.
 List<DocumentSnapshot> items;
 Stream<QuerySnapshot> product =
-    FirebaseFirestore.instance.collection("product").snapshots();
+FirebaseFirestore.instance.collection("product").snapshots();
+
+CollectionReference productCollection = FirebaseFirestore.instance.collection("product");
 
 //variable for search function.
 String searchKeyword;
@@ -28,8 +30,11 @@ class homePage extends StatefulWidget {
 
 class _homePageState extends State<homePage> {
   String title = 'Main page';
-
+  var userLat;
+  var userLong;
+  var userAddr;
   TextEditingController _controller;
+  bool isSearching = false;
 
   void initState() {
     super.initState();
@@ -47,8 +52,40 @@ class _homePageState extends State<homePage> {
     return ListView(
         shrinkWrap: true,
         children:
-            snapshots.map((data) => buildListTile(context, data)).toList());
+        snapshots.map((data) => buildListTile(context, data)).toList());
   }
+
+  StreamBuilder<QuerySnapshot> search(String value) {
+    print("search");
+    print(value);
+    return StreamBuilder<QuerySnapshot>(
+      stream: productCollection
+      .where('searchKeyword', arrayContains: value)
+      .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return LinearProgressIndicator();
+        items = snapshot.data.docs;
+        return _buildList(context, items);
+      },
+    );
+  }
+
+
+  StreamBuilder<QuerySnapshot> queryProducts(var minUserLat,var maxUserLat, var userAddr) {
+    return StreamBuilder<QuerySnapshot>(
+        stream: productCollection
+            .where('farmLocationLat', isGreaterThan: minUserLat)
+            .where('farmLocationLat', isLessThan: maxUserLat)
+        .where('location', isEqualTo: userAddr)
+        .snapshots(),
+    builder: (context, snapshot) {
+    if (!snapshot.hasData) return LinearProgressIndicator();
+    items = snapshot.data.docs;
+    return _buildList(context, items);
+    },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -98,10 +135,16 @@ class _homePageState extends State<homePage> {
             children: [
               Container(
                 child: IconButton(
-                    icon: Icon(Icons.search), onPressed: () => search("")),
+                    icon: Icon(Icons.search), onPressed: () {
+                  setState(() {
+                    _controller.text == ''
+                        ? isSearching = false
+                    : isSearching = true;
+                  });
+                } ),
               ),
               SizedBox(
-                  width: 350,
+                  width: 250,
                   height: 40,
                   //TODO: Textbox for searching
                   child: TextField(
@@ -112,8 +155,11 @@ class _homePageState extends State<homePage> {
                       labelText: "Search",
                     ),
                     onSubmitted: (String value) async {
-                      searchKeyword = value;
-                      await search(value);
+                      setState(() {
+                        _controller.text == ''
+                            ? isSearching = false
+                            : isSearching = true;
+                      });
                     },
                   )),
             ],
@@ -138,14 +184,9 @@ class _homePageState extends State<homePage> {
             thickness: 1.5,
           ),
           Container(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: product,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return LinearProgressIndicator();
-                items = snapshot.data.docs;
-                return _buildList(context, items);
-              },
-            ),
+            child:
+            isSearching? search(_controller.text)
+                : queryProducts(userLat-5, userLat+5, userAddr)
           )
         ],
       ),
@@ -155,7 +196,7 @@ class _homePageState extends State<homePage> {
 
   Future<void> setData() async {
     String userdoc =
-        currentUser.toString().substring(24, currentUser.toString().length - 1);
+    currentUser.toString().substring(24, currentUser.toString().length - 1);
 
     await FirebaseFirestore.instance
         .collection("users")
@@ -163,7 +204,9 @@ class _homePageState extends State<homePage> {
         .get()
         .then((DocumentSnapshot documentSnapshot) {
       int len = documentSnapshot.data()['cart'].length;
-
+      userLat = documentSnapshot.data()['addressLat'];
+      userLong = documentSnapshot.data()['addressLong'];
+      userAddr = documentSnapshot.data()['address'];
       cartList.removeRange(0, cartList.length);
 
       for (int i = 0; i < len; i++) {
@@ -203,14 +246,5 @@ class _homePageState extends State<homePage> {
   }
 
   //TODO: make search function.
-  StreamBuilder<QuerySnapshot> search(String value) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: product,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return LinearProgressIndicator();
-        items = snapshot.data.docs;
-        return _buildList(context, items);
-      },
-    );
-  }
+
 }
